@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cut">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>3x Split Tracker</title>
+<style>
+:root{
+  --bg:#f5f6f8;--card:#ffffff;--ink:#16181d;--muted:#6b7280;--line:#e3e6ea;
+  --accent:#e4572e;--accent-ink:#fff;--ok:#1f9d55;--chip:#eef0f3;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0f1115;--card:#171a21;--ink:#eef0f3;--muted:#9aa1ad;--line:#262a33;--chip:#222631;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding-bottom:90px}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:14px 16px 8px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:20px;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:13px}
+nav{display:flex;gap:6px;margin-top:10px;overflow-x:auto}
+nav button{flex:1;min-width:70px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:9px 6px;border-radius:10px;font-weight:600;font-size:14px}
+nav button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+main{padding:14px 16px;max-width:720px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.ex-name{font-weight:700;font-size:16px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.chip{background:var(--chip);border-radius:999px;padding:2px 9px;font-size:12px;color:var(--muted)}
+.chip.p{color:var(--accent);font-weight:600}
+.presc{font-weight:700;white-space:nowrap}
+.cue{color:var(--muted);font-size:13px;margin:8px 0 4px}
+details{font-size:13px;color:var(--muted)}
+summary{cursor:pointer}
+.sets{display:grid;grid-template-columns:28px 1fr 1fr 40px;gap:6px;align-items:center;margin-top:10px}
+.sets .h{font-size:11px;color:var(--muted);text-transform:uppercase}
+input[type=number]{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:15px}
+.chk{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--muted);font-size:18px}
+.chk.done{background:var(--ok);border-color:var(--ok);color:#fff}
+.last{font-size:12px;color:var(--muted);margin-top:6px}
+.btn{border:0;background:var(--accent);color:var(--accent-ink);padding:12px 14px;border-radius:10px;font-weight:700;font-size:15px;width:100%}
+.btn.ghost{background:var(--chip);color:var(--ink)}
+.cardio{border-left:4px solid var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:center}
+th:first-child,td:first-child{text-align:left}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--accent)}
+.good{color:var(--ok);font-weight:700}
+#timer{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;z-index:9}
+#tdisp{font-variant-numeric:tabular-nums;font-size:26px;font-weight:800;min-width:78px}
+#timer button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:9px;padding:8px 10px;font-weight:600}
+#timer .grow{flex:1;color:var(--muted);font-size:12px}
+.hist-item{border-bottom:1px solid var(--line);padding:8px 0;font-size:13px}
+.hist-item b{font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>3x Split Tracker</h1>
+  <div class="sub">Full body A / B / C. Mon, Wed, Fri. Every muscle group hit 2x+ per week.</div>
+  <nav id="nav"></nav>
+</header>
+<main id="app"></main>
+
+<div id="timer">
+  <div id="tdisp">0:00</div>
+  <div class="grow">Rest timer. Starts when you tick a set.</div>
+  <button onclick="addTime(-15)">-15</button>
+  <button onclick="addTime(15)">+15</button>
+  <button onclick="stopTimer()">Stop</button>
+</div>
+
+<script>
+/* ---------- PROGRAM ---------- */
+const WARMUP = {name:"Treadmill warm-up", presc:"5-8 min", cue:"Brisk walk to light jog, then 1-2 light sets of your first lift."};
+const FINISHER = {name:"Treadmill finisher", presc:"10-20 min", cue:"Zone 2 (can talk in short sentences) or 6-8 rounds of 30 s fast / 60 s walk on an incline."};
+
+const DAYS = {
+  A:{label:"Day A", when:"Monday", focus:"Bench + Squat",
+    ex:[
+      {id:"bench",name:"Barbell Bench Press",m:["Chest"],s:["Triceps","Front delts"],sets:3,reps:"6-10",rest:120,
+       cue:"Shoulder blades pinned back, feet planted, bar to lower chest.",alt:"DB flat press"},
+      {id:"smsquat",name:"Smith Machine Squat",m:["Quads","Glutes"],s:["Core"],sets:3,reps:"6-10",rest:120,
+       cue:"Feet slightly in front of the bar, sit down between heels, full depth you can control.",alt:"DB goblet squat"},
+      {id:"dbrow",name:"One-Arm DB Row",m:["Back"],s:["Biceps","Rear delts"],sets:3,reps:"8-12/side",rest:90,
+       cue:"Hand and knee on bench, pull elbow to hip, pause at the top.",alt:"Smith bent-over row"},
+      {id:"latraise",name:"DB Lateral Raise",m:["Shoulders"],s:[],sets:3,reps:"12-15",rest:60,
+       cue:"Slight lean forward, lead with elbows, stop at shoulder height.",alt:"Cable lateral raise"},
+      {id:"pushdown",name:"Rope Triceps Pushdown",m:["Triceps"],s:[],sets:3,reps:"10-15",rest:60,
+       cue:"Elbows fixed at sides, split the rope at the bottom.",alt:"DB overhead extension"},
+      {id:"abcrunchA",name:"Ab Crunch Machine",m:["Core"],s:[],sets:3,reps:"12-15",rest:60,
+       cue:"Curl ribs toward pelvis, slow 2-3 s return.",alt:"DB weighted crunch"}
+    ]},
+  B:{label:"Day B", when:"Wednesday", focus:"Hinge + Press",
+    ex:[
+      {id:"smrdl",name:"Smith Romanian Deadlift",m:["Hamstrings","Glutes"],s:["Back"],sets:3,reps:"8-10",rest:120,
+       cue:"Soft knees, push hips back, bar stays close, stop when hamstrings are stretched.",alt:"DB Romanian deadlift"},
+      {id:"mshpress",name:"Machine Shoulder Press",m:["Shoulders"],s:["Triceps"],sets:3,reps:"8-12",rest:90,
+       cue:"Back flat against pad, do not lock out hard.",alt:"Seated DB shoulder press"},
+      {id:"smrow",name:"Smith Bent-Over Row",m:["Back"],s:["Biceps"],sets:3,reps:"8-12",rest:90,
+       cue:"Hinge to about 45 degrees, pull to belly button, squeeze shoulder blades.",alt:"Chest-supported DB row"},
+      {id:"legext",name:"Leg Extension",m:["Quads"],s:[],sets:3,reps:"10-15",rest:60,
+       cue:"1 s squeeze at the top, 2-3 s lowering.",alt:"DB step-up"},
+      {id:"hammer",name:"DB Hammer Curl",m:["Biceps"],s:["Forearms"],sets:3,reps:"10-12",rest:60,
+       cue:"Neutral grip, no swinging, full stretch at the bottom.",alt:"Rope hammer curl"},
+      {id:"facepull",name:"Rope Face Pull",m:["Shoulders"],s:["Back"],sets:3,reps:"12-15",rest:60,
+       cue:"Pull rope to forehead, thumbs back, elbows high (rear delts).",alt:"DB reverse fly"},
+      {id:"calfB",name:"Smith Standing Calf Raise",m:["Calves"],s:[],sets:3,reps:"10-15",rest:60,
+       cue:"Balls of feet on a plate, full stretch, 1 s pause at the top.",alt:"DB single-leg calf raise"}
+    ]},
+  C:{label:"Day C", when:"Friday", focus:"Machine press + Unilateral",
+    ex:[
+      {id:"mchest",name:"Machine Chest Press",m:["Chest"],s:["Triceps","Front delts"],sets:3,reps:"8-12",rest:90,
+       cue:"Handles at mid-chest, controlled 2 s lowering.",alt:"Incline DB press"},
+      {id:"bss",name:"DB Bulgarian Split Squat",m:["Quads","Glutes"],s:["Core"],sets:3,reps:"8-12/side",rest:90,
+       cue:"Rear foot on bench, front shin fairly vertical, drop the back knee straight down.",alt:"DB walking lunge"},
+      {id:"hipthrust",name:"Smith Hip Thrust",m:["Glutes","Hamstrings"],s:[],sets:3,reps:"8-12",rest:90,
+       cue:"Upper back on bench, pad on hips, chin tucked, lock out with glutes not lower back.",alt:"DB hip thrust"},
+      {id:"straightarm",name:"Rope Straight-Arm Pulldown",m:["Back"],s:["Core"],sets:3,reps:"12-15",rest:60,
+       cue:"Slight hinge, arms nearly straight, sweep rope to thighs (lats).",alt:"DB pullover"},
+      {id:"dbcurl",name:"Incline DB Curl",m:["Biceps"],s:[],sets:3,reps:"10-12",rest:60,
+       cue:"Bench at 45-60 degrees, arms hang behind torso, supinate at the top.",alt:"Standing DB curl"},
+      {id:"ohext",name:"Rope Overhead Triceps Extension",m:["Triceps"],s:[],sets:3,reps:"10-15",rest:60,
+       cue:"Face away from the stack, elbows by ears, full stretch.",alt:"DB overhead extension"},
+      {id:"abcrunchC",name:"Ab Crunch Machine",m:["Core"],s:[],sets:3,reps:"12-15",rest:60,
+       cue:"Exhale hard at the bottom of the crunch.",alt:"Plank 30-45 s"},
+      {id:"calfC",name:"Smith Standing Calf Raise",m:["Calves"],s:[],sets:2,reps:"12-15",rest:60,
+       cue:"Slow and full range.",alt:"DB single-leg calf raise"}
+    ]}
+};
+
+/* ---------- STORAGE ---------- */
+const KEY="split3x_v1";
+function load(){try{return JSON.parse(localStorage.getItem(KEY))||{draft:{},history:[]}}catch(e){return {draft:{},history:[]}}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+let S=load();
+let tab=(()=>{const d=new Date().getDay();return d===3?"B":d===5?"C":"A"})();
+
+/* ---------- RENDER ---------- */
+const TABS=[["A","Day A"],["B","Day B"],["C","Day C"],["plan","Plan"],["log","History"]];
+function renderNav(){
+  document.getElementById("nav").innerHTML=TABS.map(([k,l])=>`<button class="${tab===k?'on':''}" onclick="go('${k}')">${l}</button>`).join("");
+}
+function go(k){tab=k;render();window.scrollTo(0,0)}
+
+function lastFor(id){
+  for(let i=S.history.length-1;i>=0;i--){
+    const e=S.history[i].ex.find(x=>x.id===id);
+    if(e&&e.sets.some(s=>s.w||s.r))return {date:S.history[i].date,sets:e.sets};
+  }
+  return null;
+}
+
+function renderDay(k){
+  const d=DAYS[k];S.draft[k]=S.draft[k]||{};
+  let h=`<div class="card"><div class="row"><div><div class="ex-name">${d.label}: ${d.focus}</div><div class="sub">${d.when}</div></div></div></div>`;
+  h+=`<div class="card cardio"><div class="row"><div class="ex-name">${WARMUP.name}</div><div class="presc">${WARMUP.presc}</div></div><div class="cue">${WARMUP.cue}</div></div>`;
+  d.ex.forEach(ex=>{
+    const dr=S.draft[k][ex.id]||(S.draft[k][ex.id]=Array.from({length:ex.sets},()=>({w:"",r:"",d:false})));
+    const last=lastFor(ex.id);
+    h+=`<div class="card"><div class="row"><div><div class="ex-name">${ex.name}</div>
+      <div class="chips">${ex.m.map(m=>`<span class="chip p">${m}</span>`).join("")}${ex.s.map(m=>`<span class="chip">${m}</span>`).join("")}</div></div>
+      <div class="presc">${ex.sets} x ${ex.reps}</div></div>
+      <div class="cue">${ex.cue}</div>
+      <details><summary>Swap / rest</summary>Alternative: ${ex.alt}. Rest ${ex.rest} s.</details>
+      <div class="sets"><div class="h">Set</div><div class="h">kg</div><div class="h">Reps</div><div></div>
+      ${dr.map((s,i)=>`<div>${i+1}</div>
+        <input type="number" inputmode="decimal" value="${s.w}" placeholder="${last&&last.sets[i]?last.sets[i].w:''}" oninput="setv('${k}','${ex.id}',${i},'w',this.value)">
+        <input type="number" inputmode="numeric" value="${s.r}" placeholder="${last&&last.sets[i]?last.sets[i].r:''}" oninput="setv('${k}','${ex.id}',${i},'r',this.value)">
+        <button class="chk ${s.d?'done':''}" onclick="tick('${k}','${ex.id}',${i},${ex.rest})">✓</button>`).join("")}
+      </div>
+      ${last?`<div class="last">Last (${last.date}): ${last.sets.map(s=>`${s.w||"-"}kg x ${s.r||"-"}`).join(", ")}</div>`:""}
+    </div>`;
+  });
+  h+=`<div class="card cardio"><div class="row"><div class="ex-name">${FINISHER.name}</div><div class="presc">${FINISHER.presc}</div></div><div class="cue">${FINISHER.cue}</div></div>`;
+  h+=`<button class="btn" onclick="finish('${k}')">Finish & save workout</button>
+      <div style="height:8px"></div><button class="btn ghost" onclick="clearDraft('${k}')">Clear today's entries</button>`;
+  return h;
+}
+
+function renderPlan(){
+  const groups=["Chest","Back","Shoulders","Quads","Hamstrings","Glutes","Biceps","Triceps","Calves","Core"];
+  const hit=(k,g)=>DAYS[k].ex.some(e=>e.m.includes(g));
+  let rows=groups.map(g=>{
+    const n=["A","B","C"].filter(k=>hit(k,g)).length;
+    return `<tr><td>${g}</td>${["A","B","C"].map(k=>`<td>${hit(k,g)?'<span class="dot"></span>':''}</td>`).join("")}<td class="${n>=2?'good':''}">${n}x</td></tr>`;
+  }).join("");
+  return `<div class="card"><div class="ex-name">Weekly coverage (primary movers)</div>
+    <table><tr><th>Muscle</th><th>A<br><small>Mon</small></th><th>B<br><small>Wed</small></th><th>C<br><small>Fri</small></th><th>Per wk</th></tr>${rows}</table></div>
+  <div class="card"><div class="ex-name">How to progress</div>
+    <div class="cue">Double progression: stay in the rep range. When you hit the top of the range on every set with good form, add the smallest jump next time (2.5 kg barbell/Smith, next DB, one plate on machines). Leave 1-2 reps in reserve on most sets; last set of each exercise can go closer to failure.</div></div>
+  <div class="card"><div class="ex-name">Weekly rhythm</div>
+    <div class="cue">Mon A, Wed B, Fri C. Missed a day? Just do the next letter; the order matters more than the weekday. Every 6-8 weeks, take a lighter week (2 sets, same weights).</div></div>
+  <div class="card"><div class="ex-name">Data</div>
+    <div class="cue">Logs are stored in this browser only. Export to keep a copy.</div>
+    <button class="btn ghost" onclick="exportData()">Export history (JSON)</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" onclick="importData()">Import history</button>
+  </div>`;
+}
+
+function renderLog(){
+  if(!S.history.length)return `<div class="card"><div class="cue">No workouts saved yet.</div></div>`;
+  return `<div class="card">${S.history.slice().reverse().map((w,ri)=>{
+    const idx=S.history.length-1-ri;
+    return `<div class="hist-item"><div class="row"><b>${w.date} · ${DAYS[w.day].label}</b>
+      <button class="chip" style="border:0" onclick="delHist(${idx})">Delete</button></div>
+      ${w.ex.filter(e=>e.sets.some(s=>s.w||s.r)).map(e=>`<div>${e.name}: ${e.sets.filter(s=>s.w||s.r).map(s=>`${s.w||"-"}x${s.r||"-"}`).join(", ")}</div>`).join("")}
+    </div>`}).join("")}</div>`;
+}
+
+function render(){
+  renderNav();
+  const app=document.getElementById("app");
+  app.innerHTML=tab==="plan"?renderPlan():tab==="log"?renderLog():renderDay(tab);
+}
+
+/* ---------- ACTIONS ---------- */
+function setv(k,id,i,f,v){S.draft[k][id][i][f]=v;save()}
+function tick(k,id,i,rest){
+  const s=S.draft[k][id][i];s.d=!s.d;save();render();
+  if(s.d)startTimer(rest);
+}
+function finish(k){
+  const d=DAYS[k],dr=S.draft[k]||{};
+  const ex=d.ex.map(e=>({id:e.id,name:e.name,sets:(dr[e.id]||[]).map(s=>({w:s.w,r:s.r}))}));
+  if(!ex.some(e=>e.sets.some(s=>s.w||s.r))){alert("Log at least one set first.");return}
+  S.history.push({date:new Date().toISOString().slice(0,10),day:k,ex});
+  S.draft[k]={};save();stopTimer();tab="log";render();
+}
+function clearDraft(k){if(confirm("Clear today's entries for "+DAYS[k].label+"?")){S.draft[k]={};save();render()}}
+function delHist(i){if(confirm("Delete this workout?")){S.history.splice(i,1);save();render()}}
+function exportData(){
+  const b=new Blob([JSON.stringify(S.history,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="workouts.json";a.click();
+}
+function importData(){
+  const inp=document.createElement("input");inp.type="file";inp.accept=".json";
+  inp.onchange=()=>{const f=inp.files[0];if(!f)return;f.text().then(t=>{
+    try{const h=JSON.parse(t);if(Array.isArray(h)){S.history=h;save();render();alert("Imported "+h.length+" workouts.")}}
+    catch(e){alert("Could not read that file.")}});};
+  inp.click();
+}
+
+/* ---------- TIMER ---------- */
+let tLeft=0,tInt=null;
+function fmt(s){s=Math.max(0,s);return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}
+function showT(){document.getElementById("tdisp").textContent=fmt(tLeft)}
+function startTimer(sec){tLeft=sec;showT();clearInterval(tInt);tInt=setInterval(()=>{tLeft--;showT();if(tLeft<=0){clearInterval(tInt);tInt=null;beep()}},1000)}
+function addTime(d){if(!tInt&&d>0){startTimer(d);return}tLeft=Math.max(0,tLeft+d);showT()}
+function stopTimer(){clearInterval(tInt);tInt=null;tLeft=0;showT()}
+function beep(){
+  try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
+  try{const c=new (window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator(),g=c.createGain();
+    o.connect(g);g.connect(c.destination);o.frequency.value=880;g.gain.value=.15;o.start();o.stop(c.currentTime+.4)}catch(e){}
+}
+
+render();
+</script>
+</body>
+</html>
